@@ -1,0 +1,5 @@
+"KVK Lookup","KVK-Abfrage"
+"KVK Number Attribute","KVK-Nummer-Attribut"
+"Attribute code that holds the KVK number, read from the order billing address first and the customer second. Leave empty when the shop does not store one; the assistant then needs the number itself.","Attributcode, die die KVK-Nummer enthält. Zuerst aus der Rechnungsadresse der Bestellung gelesen, danach vom Kunden. Leer lassen, wenn der Shop sie nicht speichert; der Assistent braucht die Nummer dann selbst."
+"Cache Lifetime (days)","Cache-Dauer (Tage)"
+"The KVK open dataset allows one request per minute per server, so answers are cached.","Der offene KVK-Datensatz erlaubt eine Anfrage pro Minute pro Server, daher werden Antworten zwischengespeichert."
