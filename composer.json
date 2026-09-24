@@ -1,0 +1,28 @@
+{
+    "name": "mago-assistant/magento2-kvk",
+    "description": "Mago Assistant skill: industry (SBI), legal form and status of a Dutch company from the KVK open dataset",
+    "type": "magento2-module",
+    "version": "1.0.0",
+    "license": "MIT",
+    "require": {
+        "php": "~8.2.0||~8.3.0||~8.4.0||~8.5.0",
+        "magento/framework": "^103.0",
+        "magento/module-backend": "*",
+        "magento/module-config": "*",
+        "magento/module-customer": "*",
+        "magento/module-sales": "*",
+        "magento/module-store": "*",
+        "mago-assistant/mago": "*"
+    },
+    "suggest": {
+        "mago-assistant/magento2-vies": "Validates the VAT number and returns the registered name, which the KVK open dataset does not"
+    },
+    "autoload": {
+        "files": [
+            "registration.php"
+        ],
+        "psr-4": {
+            "MagoAssistant\\Kvk\\": ""
+        }
+    }
+}

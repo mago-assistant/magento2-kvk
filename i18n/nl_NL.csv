@@ -1,0 +1,5 @@
+"KVK Lookup","KVK-opzoeking"
+"KVK Number Attribute","Attribuut KVK-nummer"
+"Attribute code that holds the KVK number, read from the order billing address first and the customer second. Leave empty when the shop does not store one; the assistant then needs the number itself.","Attribuutcode waarin het KVK-nummer staat. Eerst gelezen van het factuuradres van de order, daarna van de klant. Laat leeg als de winkel het niet opslaat; de assistent heeft het nummer dan zelf nodig."
+"Cache Lifetime (days)","Cacheduur (dagen)"
+"The KVK open dataset allows one request per minute per server, so answers are cached.","De KVK open dataset staat één verzoek per minuut per server toe, dus antwoorden worden gecachet."

@@ -1,0 +1,5 @@
+"KVK Lookup","KVK Lookup"
+"KVK Number Attribute","KVK Number Attribute"
+"Attribute code that holds the KVK number, read from the order billing address first and the customer second. Leave empty when the shop does not store one; the assistant then needs the number itself.","Attribute code that holds the KVK number, read from the order billing address first and the customer second. Leave empty when the shop does not store one; the assistant then needs the number itself."
+"Cache Lifetime (days)","Cache Lifetime (days)"
+"The KVK open dataset allows one request per minute per server, so answers are cached.","The KVK open dataset allows one request per minute per server, so answers are cached."
