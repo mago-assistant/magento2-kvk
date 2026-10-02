@@ -9,7 +9,9 @@ namespace MagoAssistant\Kvk\Service\Tool;
 use Magento\Customer\Api\CustomerRepositoryInterface;
 use Magento\Framework\Api\SearchCriteriaBuilder;
 use Magento\Framework\App\Config\ScopeConfigInterface;
+use Magento\Framework\AuthorizationInterface;
 use Magento\Framework\DataObject;
+use Magento\Framework\Exception\AuthorizationException;
 use Magento\Framework\Exception\LocalizedException;
 use Magento\Sales\Api\Data\OrderInterface;
 use Magento\Sales\Api\OrderRepositoryInterface;
@@ -30,6 +32,7 @@ use MagoAssistant\Mago\Service\Privacy\PiiClass;
 class CompanyLookup implements ToolInterface
 {
     private const XML_PATH_ATTRIBUTE = 'mago/kvk/kvk_attribute';
+    private const CUSTOMER_ACL = 'Magento_Customer::manage';
     private const MAIN_ACTIVITY = 'Hoofdactiviteit';
     private const ACTIVE = 'J';
 
@@ -45,7 +48,8 @@ class CompanyLookup implements ToolInterface
         private readonly OrderRepositoryInterface $orderRepository,
         private readonly CustomerRepositoryInterface $customerRepository,
         private readonly SearchCriteriaBuilder $searchCriteriaBuilder,
-        private readonly ScopeConfigInterface $scopeConfig
+        private readonly ScopeConfigInterface $scopeConfig,
+        private readonly AuthorizationInterface $authorization
     ) {
     }
 
@@ -88,6 +92,7 @@ class CompanyLookup implements ToolInterface
     /**
      * A bare KVK number touches no shop data, so the assistant's own skill permission covers it.
      * An order does, and an empty input has to resolve to the strictest resource (fail closed).
+     * The customer fallback additionally needs Magento_Customer::manage, checked when it runs.
      *
      * @param array<string,mixed> $input
      */
@@ -158,7 +163,12 @@ class CompanyLookup implements ToolInterface
 
         $fromOrder = $kvkNumber === '' && $orderNumber !== '';
         if ($fromOrder) {
-            $kvkNumber = $this->kvkNumberOnOrder($orderNumber);
+            try {
+                $kvkNumber = $this->kvkNumberOnOrder($orderNumber);
+            } catch (AuthorizationException) {
+                return ['error' => 'Order ' . $orderNumber . ' has no KVK number on its billing address, '
+                    . 'and reading it from the customer needs customer permission'];
+            }
             if ($kvkNumber === null) {
                 return ['error' => 'Order ' . $orderNumber . ' was not found'];
             }
@@ -229,6 +239,8 @@ class CompanyLookup implements ToolInterface
 
     /**
      * Null when the order does not exist, '' when it holds no KVK number.
+     *
+     * @throws AuthorizationException
      */
     private function kvkNumberOnOrder(string $incrementId): ?string
     {
@@ -249,12 +261,20 @@ class CompanyLookup implements ToolInterface
         return null;
     }
 
+    /**
+     * @throws AuthorizationException
+     */
     private function kvkNumberFrom(OrderInterface $order, string $attribute): string
     {
         $billing = $order->getBillingAddress();
         $value = $billing instanceof DataObject ? trim((string)$billing->getData($attribute)) : '';
         if ($value !== '' || !$order->getCustomerId()) {
             return $value;
+        }
+
+        // getMagentoAcl() only knows the order is read, so the customer read is checked here
+        if (!$this->authorization->isAllowed(self::CUSTOMER_ACL)) {
+            throw new AuthorizationException(__('Customer read not allowed'));
         }
 
         try {

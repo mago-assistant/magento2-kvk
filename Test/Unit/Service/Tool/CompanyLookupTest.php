@@ -12,6 +12,7 @@ use Magento\Framework\Api\AttributeInterface;
 use Magento\Framework\Api\SearchCriteria;
 use Magento\Framework\Api\SearchCriteriaBuilder;
 use Magento\Framework\App\Config\ScopeConfigInterface;
+use Magento\Framework\AuthorizationInterface;
 use Magento\Sales\Api\Data\OrderSearchResultInterface;
 use Magento\Sales\Api\OrderRepositoryInterface;
 use Magento\Sales\Model\Order;
@@ -43,6 +44,7 @@ class CompanyLookupTest extends TestCase
     private OrderRepositoryInterface&MockObject $orderRepository;
     private CustomerRepositoryInterface&MockObject $customerRepository;
     private ScopeConfigInterface&MockObject $scopeConfig;
+    private AuthorizationInterface&MockObject $authorization;
     private CompanyLookup $tool;
 
     protected function setUp(): void
@@ -51,6 +53,7 @@ class CompanyLookupTest extends TestCase
         $this->orderRepository = $this->createMock(OrderRepositoryInterface::class);
         $this->customerRepository = $this->createMock(CustomerRepositoryInterface::class);
         $this->scopeConfig = $this->createMock(ScopeConfigInterface::class);
+        $this->authorization = $this->createMock(AuthorizationInterface::class);
         $criteriaBuilder = $this->createMock(SearchCriteriaBuilder::class);
         $criteriaBuilder->method('addFilter')->willReturnSelf();
         $criteriaBuilder->method('setPageSize')->willReturnSelf();
@@ -62,7 +65,8 @@ class CompanyLookupTest extends TestCase
             $this->orderRepository,
             $this->customerRepository,
             $criteriaBuilder,
-            $this->scopeConfig
+            $this->scopeConfig,
+            $this->authorization
         );
     }
 
@@ -132,6 +136,7 @@ class CompanyLookupTest extends TestCase
     public function testOrderFallsBackToTheCustomerAttribute(): void
     {
         $this->scopeConfig->method('getValue')->willReturn('kvk_number');
+        $this->authorization->method('isAllowed')->with('Magento_Customer::manage')->willReturn(true);
         $this->givenOrder(billingValue: '', customerValue: '17085815');
         $this->client->expects($this->once())->method('fetch')->with('17085815')->willReturn(self::RECORD);
 
@@ -142,6 +147,7 @@ class CompanyLookupTest extends TestCase
     {
         $this->scopeConfig->method('getValue')->willReturn('kvk_number');
         $this->givenOrder(billingValue: '11111111', customerValue: '17085815');
+        $this->authorization->expects($this->never())->method('isAllowed');
         $this->customerRepository->expects($this->never())->method('getById');
         $this->client->expects($this->once())->method('fetch')->with('11111111')->willReturn(self::RECORD);
 
@@ -158,9 +164,23 @@ class CompanyLookupTest extends TestCase
         $this->assertSame('Order 404 was not found', $this->tool->execute(['order_number' => '404'])['error']);
     }
 
+    public function testCustomerFallbackNeedsCustomerPermission(): void
+    {
+        $this->scopeConfig->method('getValue')->willReturn('kvk_number');
+        $this->givenOrder(billingValue: '', customerValue: '17085815');
+        $this->authorization->method('isAllowed')->with('Magento_Customer::manage')->willReturn(false);
+        $this->customerRepository->expects($this->never())->method('getById');
+        $this->client->expects($this->never())->method('fetch');
+
+        $error = $this->tool->execute(['order_number' => '1'])['error'];
+
+        $this->assertStringContainsString('needs customer permission', $error);
+    }
+
     public function testCustomerWithoutTheAttributeIsAMissingNumber(): void
     {
         $this->scopeConfig->method('getValue')->willReturn('kvk_number');
+        $this->authorization->method('isAllowed')->willReturn(true);
         $this->givenOrder(billingValue: '', customerValue: null);
         $this->client->expects($this->never())->method('fetch');
 

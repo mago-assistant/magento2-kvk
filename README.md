@@ -77,7 +77,8 @@ silently. `CompanyLookupTest::testClassificationCoversEveryKeyTheToolReturns` gu
 
 **The ACL depends on the arguments.** A bare KVK number reads no shop data, so it needs only the
 assistant's own skill permission. An order number needs `Magento_Sales::actions_view`, and so does an
-empty input (fail closed).
+empty input (fail closed). Reading the number from the customer when the billing address has none also
+needs `Magento_Customer::manage`.
 
 ## Updating the SBI table
 
