@@ -12,7 +12,7 @@
         "magento/module-customer": "*",
         "magento/module-sales": "*",
         "magento/module-store": "*",
-        "mago-assistant/mago": "*"
+        "mago-assistant/magento2-mago": "*"
     },
     "suggest": {
         "mago-assistant/magento2-vies": "Validates the VAT number and returns the registered name, which the KVK open dataset does not"
