@@ -12,11 +12,12 @@ use Magento\Framework\App\Config\ScopeConfigInterface;
 use Magento\Framework\AuthorizationInterface;
 use Magento\Framework\DataObject;
 use Magento\Framework\Exception\AuthorizationException;
-use Magento\Framework\Exception\LocalizedException;
+use Magento\Framework\Exception\NoSuchEntityException;
 use Magento\Sales\Api\Data\OrderInterface;
 use Magento\Sales\Api\OrderRepositoryInterface;
 use MagoAssistant\Kvk\Service\OpenDataClient;
 use MagoAssistant\Kvk\Service\SbiCatalog;
+use MagoAssistant\Mago\Api\Acl;
 use MagoAssistant\Mago\Api\Tool\ToolInterface;
 use MagoAssistant\Mago\Service\Privacy\PiiClass;
 
@@ -90,7 +91,7 @@ class CompanyLookup implements ToolInterface
     }
 
     /**
-     * A bare KVK number touches no shop data, so the assistant's own skill permission covers it.
+     * A bare KVK number touches no shop data, only the external register, so it is granted per user.
      * An order does, and an empty input has to resolve to the strictest resource (fail closed).
      * The customer fallback additionally needs Magento_Customer::manage, checked when it runs.
      *
@@ -101,7 +102,7 @@ class CompanyLookup implements ToolInterface
         $kvkNumber = trim((string)($input['kvk_number'] ?? ''));
         $orderNumber = trim((string)($input['order_number'] ?? ''));
 
-        return $kvkNumber !== '' && $orderNumber === '' ? '' : 'Magento_Sales::actions_view';
+        return $kvkNumber !== '' && $orderNumber === '' ? Acl::MAGO_PER_USER : 'Magento_Sales::actions_view';
     }
 
     public function isReadOnly(): bool
@@ -118,16 +119,17 @@ class CompanyLookup implements ToolInterface
     }
 
     /**
-     * Nested records re-match by key name, so the activity fields are listed here too. Everything is
-     * public: the open dataset only covers BVs and NVs and carries no name, address or person.
+     * Nested records re-match by key name, so the activity fields are listed here too. The register's
+     * answer carries no name, address or person, but the KVK number does identify a sole trader
+     * (the not_found case), and the order number is shop data, so both are tokenised.
      */
     public function getFieldClassification(string $action = ''): array
     {
         return [
             'found' => [PiiClass::PUBLIC],
             'reason' => [PiiClass::PUBLIC],
-            'kvk_number' => [PiiClass::PUBLIC],
-            'order_number' => [PiiClass::PUBLIC],
+            'kvk_number' => [PiiClass::TOKENISE, 'kvk'],
+            'order_number' => [PiiClass::TOKENISE, 'order'],
             'active' => [PiiClass::PUBLIC],
             'legal_form' => [PiiClass::PUBLIC],
             'insolvency' => [PiiClass::PUBLIC],
@@ -168,6 +170,9 @@ class CompanyLookup implements ToolInterface
             } catch (AuthorizationException) {
                 return ['error' => 'Order ' . $orderNumber . ' has no KVK number on its billing address, '
                     . 'and reading it from the customer needs customer permission'];
+            } catch (NoSuchEntityException) {
+                return ['error' => 'Order ' . $orderNumber . ' has no KVK number on its billing address, '
+                    . 'and its customer account no longer exists'];
             }
             if ($kvkNumber === null) {
                 return ['error' => 'Order ' . $orderNumber . ' was not found'];
@@ -241,6 +246,7 @@ class CompanyLookup implements ToolInterface
      * Null when the order does not exist, '' when it holds no KVK number.
      *
      * @throws AuthorizationException
+     * @throws NoSuchEntityException
      */
     private function kvkNumberOnOrder(string $incrementId): ?string
     {
@@ -263,6 +269,7 @@ class CompanyLookup implements ToolInterface
 
     /**
      * @throws AuthorizationException
+     * @throws NoSuchEntityException
      */
     private function kvkNumberFrom(OrderInterface $order, string $attribute): string
     {
@@ -277,12 +284,8 @@ class CompanyLookup implements ToolInterface
             throw new AuthorizationException(__('Customer read not allowed'));
         }
 
-        try {
-            $custom = $this->customerRepository->getById((int)$order->getCustomerId())
-                ->getCustomAttribute($attribute);
-        } catch (LocalizedException) {
-            return '';
-        }
+        $custom = $this->customerRepository->getById((int)$order->getCustomerId())
+            ->getCustomAttribute($attribute);
 
         return $custom !== null ? trim((string)$custom->getValue()) : '';
     }

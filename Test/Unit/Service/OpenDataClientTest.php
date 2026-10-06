@@ -128,6 +128,42 @@ class OpenDataClientTest extends TestCase
         $this->assertStringContainsString('timeout', $this->client->fetch('12345678')['error'] ?? '');
     }
 
+    public function testServerErrorIsAnUncachedError(): void
+    {
+        $this->cache->method('load')->willReturn(false);
+        $this->respond(503, '<html>Service Unavailable</html>');
+        $this->cache->expects($this->never())->method('save');
+
+        $this->assertSame(['error' => 'The KVK open dataset answered: HTTP 503'], $this->client->fetch('12345678'));
+    }
+
+    public function testNotFoundWithoutABodyIsAnUncachedError(): void
+    {
+        $this->cache->method('load')->willReturn(false);
+        $this->respond(404, '');
+        $this->cache->expects($this->never())->method('save');
+
+        $this->assertSame(['error' => 'The KVK open dataset answered: HTTP 404'], $this->client->fetch('12345678'));
+    }
+
+    public function testSuccessThatIsNotJsonIsAnUncachedError(): void
+    {
+        $this->cache->method('load')->willReturn(false);
+        $this->respond(200, '<html>maintenance</html>');
+        $this->cache->expects($this->never())->method('save');
+
+        $this->assertSame(['error' => 'The KVK open dataset answered: HTTP 200'], $this->client->fetch('12345678'));
+    }
+
+    public function testProgrammingErrorIsNotReportedAsUnreachable(): void
+    {
+        $this->cache->method('load')->willReturn(false);
+        $this->curl->method('get')->willThrowException(new \TypeError('bad argument'));
+
+        $this->expectException(\TypeError::class);
+        $this->client->fetch('12345678');
+    }
+
     private function respond(int $status, string $body): void
     {
         $this->curl->method('getStatus')->willReturn($status);

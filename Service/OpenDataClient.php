@@ -86,7 +86,7 @@ class OpenDataClient
             $curl->get(self::ENDPOINT . $kvkNumber);
             $status = $curl->getStatus();
             $body = $curl->getBody();
-        } catch (\Throwable $e) {
+        } catch (\Exception $e) {
             return ['error' => 'Could not reach the KVK open dataset: ' . $e->getMessage()];
         }
 
@@ -108,13 +108,15 @@ class OpenDataClient
             return $decoded;
         }
 
-        $reason = $this->reason($decoded) ?: 'HTTP ' . $status;
+        $reason = $this->reason($decoded);
 
-        if ($status === 404 && !str_contains($reason, self::TEMPORARY_FAULT)) {
+        // Only a 404 the register explains is a miss: a bare one can be a proxy or a moved route,
+        // and caching that would hide every company for the whole miss lifetime.
+        if ($status === 404 && $reason !== '' && !str_contains($reason, self::TEMPORARY_FAULT)) {
             return ['not_found' => $reason];
         }
 
-        return ['error' => 'The KVK open dataset answered: ' . $reason];
+        return ['error' => 'The KVK open dataset answered: ' . ($reason ?: 'HTTP ' . $status)];
     }
 
     /**

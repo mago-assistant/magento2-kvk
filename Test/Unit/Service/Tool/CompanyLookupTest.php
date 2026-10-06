@@ -13,6 +13,8 @@ use Magento\Framework\Api\SearchCriteria;
 use Magento\Framework\Api\SearchCriteriaBuilder;
 use Magento\Framework\App\Config\ScopeConfigInterface;
 use Magento\Framework\AuthorizationInterface;
+use Magento\Framework\Exception\LocalizedException;
+use Magento\Framework\Exception\NoSuchEntityException;
 use Magento\Sales\Api\Data\OrderSearchResultInterface;
 use Magento\Sales\Api\OrderRepositoryInterface;
 use Magento\Sales\Model\Order;
@@ -20,6 +22,8 @@ use Magento\Sales\Model\Order\Address;
 use MagoAssistant\Kvk\Service\OpenDataClient;
 use MagoAssistant\Kvk\Service\SbiCatalog;
 use MagoAssistant\Kvk\Service\Tool\CompanyLookup;
+use MagoAssistant\Mago\Api\Acl;
+use MagoAssistant\Mago\Service\Privacy\PiiClass;
 use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
@@ -84,6 +88,36 @@ class CompanyLookupTest extends TestCase
         $this->assertStringStartsWith('surseance', $result['insolvency']);
         $this->assertSame('64210', $result['main_activity']['sbi_code']);
         $this->assertSame('47110', $result['other_activities'][0]['sbi_code']);
+    }
+
+    public function testMapsAnInactiveCompanyWithoutInsolvency(): void
+    {
+        $record = self::RECORD;
+        $record['actief'] = 'N';
+        unset($record['insolventieCode']);
+        $this->client->method('fetch')->willReturn($record);
+
+        $result = $this->tool->execute(['kvk_number' => '17085815']);
+
+        $this->assertFalse($result['active']);
+        $this->assertNull($result['insolvency']);
+    }
+
+    public function testMalformedStartDateIsNull(): void
+    {
+        $record = self::RECORD;
+        $record['datumAanvang'] = '1994-10';
+        $this->client->method('fetch')->willReturn($record);
+
+        $this->assertNull($this->tool->execute(['kvk_number' => '17085815'])['start_date']);
+    }
+
+    public function testKvkAndOrderNumbersAreTokenised(): void
+    {
+        $classes = $this->tool->getFieldClassification();
+
+        $this->assertSame([PiiClass::TOKENISE, 'kvk'], $classes['kvk_number']);
+        $this->assertSame([PiiClass::TOKENISE, 'order'], $classes['order_number']);
     }
 
     public function testClassificationCoversEveryKeyTheToolReturns(): void
@@ -187,6 +221,41 @@ class CompanyLookupTest extends TestCase
         $this->assertStringContainsString('no KVK number', $this->tool->execute(['order_number' => '1'])['error']);
     }
 
+    public function testGuestOrderWithoutBillingNumberNeverReadsACustomer(): void
+    {
+        $this->scopeConfig->method('getValue')->willReturn('kvk_number');
+        $this->givenOrder(billingValue: '', customerValue: '17085815', customerId: null);
+        $this->authorization->expects($this->never())->method('isAllowed');
+        $this->customerRepository->expects($this->never())->method('getById');
+        $this->client->expects($this->never())->method('fetch');
+
+        $this->assertStringContainsString('no KVK number', $this->tool->execute(['order_number' => '1'])['error']);
+    }
+
+    public function testDeletedCustomerIsNotReportedAsMissingNumber(): void
+    {
+        $this->scopeConfig->method('getValue')->willReturn('kvk_number');
+        $this->authorization->method('isAllowed')->willReturn(true);
+        $this->givenOrder(billingValue: '', customerValue: null, stubCustomer: false);
+        $this->customerRepository->method('getById')->willThrowException(new NoSuchEntityException());
+        $this->client->expects($this->never())->method('fetch');
+
+        $error = $this->tool->execute(['order_number' => '1'])['error'];
+
+        $this->assertStringContainsString('customer account no longer exists', $error);
+    }
+
+    public function testFailingCustomerReadIsNotHidden(): void
+    {
+        $this->scopeConfig->method('getValue')->willReturn('kvk_number');
+        $this->authorization->method('isAllowed')->willReturn(true);
+        $this->givenOrder(billingValue: '', customerValue: null, stubCustomer: false);
+        $this->customerRepository->method('getById')->willThrowException(new LocalizedException(__('db down')));
+
+        $this->expectException(LocalizedException::class);
+        $this->tool->execute(['order_number' => '1']);
+    }
+
     public function testExplicitNumberDoesNotClaimToComeFromTheOrder(): void
     {
         $this->client->method('fetch')->willReturn(self::RECORD);
@@ -214,9 +283,9 @@ class CompanyLookupTest extends TestCase
         $this->assertSame(['error' => 'rate limited'], $this->tool->execute(['kvk_number' => '17085815']));
     }
 
-    public function testAclIsOnlyWaivedForABareKvkNumber(): void
+    public function testBareKvkNumberIsGrantedPerUser(): void
     {
-        $this->assertSame('', $this->tool->getMagentoAcl(['kvk_number' => '17085815']));
+        $this->assertSame(Acl::MAGO_PER_USER, $this->tool->getMagentoAcl(['kvk_number' => '17085815']));
         $this->assertSame('Magento_Sales::actions_view', $this->tool->getMagentoAcl([]));
         $this->assertSame('Magento_Sales::actions_view', $this->tool->getMagentoAcl(['order_number' => '1']));
         $this->assertSame(
@@ -225,13 +294,13 @@ class CompanyLookupTest extends TestCase
         );
     }
 
-    private function givenOrder(string $billingValue, ?string $customerValue): void
+    private function givenOrder(string $billingValue, ?string $customerValue, ?int $customerId = 7, bool $stubCustomer = true): void
     {
         $address = $this->createMock(Address::class);
         $address->method('getData')->with('kvk_number')->willReturn($billingValue);
         $order = $this->createMock(Order::class);
         $order->method('getBillingAddress')->willReturn($address);
-        $order->method('getCustomerId')->willReturn(7);
+        $order->method('getCustomerId')->willReturn($customerId);
         $results = $this->createMock(OrderSearchResultInterface::class);
         $results->method('getItems')->willReturn([$order]);
         $this->orderRepository->method('getList')->willReturn($results);
@@ -243,6 +312,8 @@ class CompanyLookupTest extends TestCase
         }
         $customer = $this->createMock(CustomerInterface::class);
         $customer->method('getCustomAttribute')->with('kvk_number')->willReturn($attribute);
-        $this->customerRepository->method('getById')->with(7)->willReturn($customer);
+        if ($customerId !== null && $stubCustomer) {
+            $this->customerRepository->method('getById')->with($customerId)->willReturn($customer);
+        }
     }
 }

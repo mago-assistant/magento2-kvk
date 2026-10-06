@@ -56,8 +56,10 @@ a KVK number and a Dutch VAT number cannot be turned into one, so this skill can
 number. That is why it sits next to vies instead of on top of it, and why the order lookup depends on
 a KVK number your shop stores itself.
 
-**It returns no name or address.** Those come from vies. The upside: nothing this skill returns is
-personal data, so every field is declared `PiiClass::PUBLIC`.
+**It returns no name or address.** Those come from vies. The register's fields are declared
+`PiiClass::PUBLIC`, but `kvk_number` and `order_number` are tokenised (`kvk`, `order`): on the order
+path the KVK number is customer data, and for a sole trader it identifies a person. That is exactly
+the `not_found` case, which echoes the number back.
 
 **One request per minute per IP address.** Every answer is cached (a miss for an hour), and a rate
 limit hit is remembered for a minute so the assistant does not retry into it. For more volume or for
@@ -66,7 +68,8 @@ entries carry the tag `MAGO_KVK` in the default cache, so `bin/magento cache:flu
 `cache:clean` does not, and lowering the lifetime only affects answers fetched after the change.
 
 **`IPD1002` is temporary.** The register answers it with a 404 while a record is being processed. The
-skill reports it as an error and does not cache it, so the company is not hidden for an hour.
+skill reports it as an error and does not cache it, so the company is not hidden for an hour. The
+same goes for a 404 without a register error in the body, a 5xx, and a 200 that is not JSON.
 
 ## Things that are easy to get wrong
 
@@ -75,8 +78,10 @@ skill reports it as an error and does not cache it, so the company is not hidden
 `sector` against the classification map by name. They have to be listed there too, or they are dropped
 silently. `CompanyLookupTest::testClassificationCoversEveryKeyTheToolReturns` guards this.
 
-**The ACL depends on the arguments.** A bare KVK number reads no shop data, so it needs only the
-assistant's own skill permission. An order number needs `Magento_Sales::actions_view`, and so does an
+**The ACL depends on the arguments.** A bare KVK number reads no shop data, only the external
+register, so it returns `Acl::MAGO_PER_USER`: off for every admin until it is granted per user under
+Stores > Admin Assistant > Skills & Permissions. An empty string would be refused for everyone. An
+order number needs `Magento_Sales::actions_view`, and so does an
 empty input (fail closed). Reading the number from the customer when the billing address has none also
 needs `Magento_Customer::manage`.
 
