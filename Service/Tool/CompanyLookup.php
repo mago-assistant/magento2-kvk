@@ -99,8 +99,8 @@ class CompanyLookup implements ToolInterface
      */
     public function getMagentoAcl(array $input = []): string
     {
-        $kvkNumber = trim((string)($input['kvk_number'] ?? ''));
-        $orderNumber = trim((string)($input['order_number'] ?? ''));
+        $kvkNumber = $this->stringParam($input, 'kvk_number');
+        $orderNumber = $this->stringParam($input, 'order_number');
 
         return $kvkNumber !== '' && $orderNumber === '' ? Acl::MAGO_PER_USER : 'Magento_Sales::actions_view';
     }
@@ -160,8 +160,8 @@ class CompanyLookup implements ToolInterface
      */
     public function execute(array $params): array
     {
-        $orderNumber = trim((string)($params['order_number'] ?? ''));
-        $kvkNumber = trim((string)($params['kvk_number'] ?? ''));
+        $orderNumber = $this->stringParam($params, 'order_number');
+        $kvkNumber = $this->stringParam($params, 'kvk_number');
 
         $fromOrder = $kvkNumber === '' && $orderNumber !== '';
         if ($fromOrder) {
@@ -288,6 +288,16 @@ class CompanyLookup implements ToolInterface
             ->getCustomAttribute($attribute);
 
         return $custom !== null ? trim((string)$custom->getValue()) : '';
+    }
+
+    /**
+     * @param array<string, mixed> $params
+     */
+    private function stringParam(array $params, string $key): string
+    {
+        $value = $params[$key] ?? '';
+
+        return is_scalar($value) ? trim((string)$value) : '';
     }
 
     private function date(string $yyyymmdd): ?string

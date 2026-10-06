@@ -56,7 +56,11 @@ class OpenDataClient
 
         $cached = $this->cache->load(self::CACHE_PREFIX . $kvkNumber);
         if (is_string($cached) && $cached !== '') {
-            $decoded = $this->json->unserialize($cached);
+            try {
+                $decoded = $this->json->unserialize($cached);
+            } catch (\InvalidArgumentException) {
+                $decoded = null;
+            }
             if (is_array($decoded)) {
                 return $decoded;
             }
@@ -104,11 +108,12 @@ class OpenDataClient
             return ['error' => self::RATE_LIMITED];
         }
 
-        if ($status === 200 && is_array($decoded) && !isset($decoded['fout'])) {
+        if ($status === 200 && is_array($decoded) && $decoded !== [] && !isset($decoded['fout'])) {
             return $decoded;
         }
 
-        $reason = $this->reason($decoded);
+        // The register's fault text repeats the number, which the tool classifies as tokenised
+        $reason = str_replace($kvkNumber, '[KVK number]', $this->reason($decoded));
 
         // Only a 404 the register explains is a miss: a bare one can be a proxy or a moved route,
         // and caching that would hide every company for the whole miss lifetime.

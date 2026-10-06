@@ -57,11 +57,14 @@ class OpenDataClientTest extends TestCase
     public function testMissIsCachedBriefly(): void
     {
         $this->cache->method('load')->willReturn(false);
-        $this->respond(404, '{"fout":[{"code":"IPD0005","omschrijving":"kan niet worden geleverd"}]}');
+        $this->respond(404, '{"fout":[{"code":"IPD0005","omschrijving":"KVK-nummer 12345678 kan niet worden geleverd"}]}');
         $this->cache->expects($this->once())->method('save')
             ->with($this->anything(), 'mago_kvk_12345678', [OpenDataClient::CACHE_TAG], 3600);
 
-        $this->assertSame(['not_found' => 'IPD0005 kan niet worden geleverd'], $this->client->fetch('12345678'));
+        $this->assertSame(
+            ['not_found' => 'IPD0005 KVK-nummer [KVK number] kan niet worden geleverd'],
+            $this->client->fetch('12345678')
+        );
     }
 
     public function testTemporaryFaultIsAnUncachedError(): void
@@ -126,6 +129,37 @@ class OpenDataClientTest extends TestCase
         $this->curl->method('get')->willThrowException(new \RuntimeException('timeout'));
 
         $this->assertStringContainsString('timeout', $this->client->fetch('12345678')['error'] ?? '');
+    }
+
+    public function testRegisterTextNeverRepeatsTheNumber(): void
+    {
+        $this->cache->method('load')->willReturn(false);
+        $this->respond(404, '{"fout":[{"code":"IPD1002","omschrijving":"KVK-nummer 12345678 in behandeling"}]}');
+
+        $this->assertSame(
+            ['error' => 'The KVK open dataset answered: IPD1002 KVK-nummer [KVK number] in behandeling'],
+            $this->client->fetch('12345678')
+        );
+    }
+
+    public function testEmptySuccessBodyIsAnUncachedError(): void
+    {
+        $this->cache->method('load')->willReturn(false);
+        $this->respond(200, '{}');
+        $this->cache->expects($this->never())->method('save');
+
+        $this->assertSame(['error' => 'The KVK open dataset answered: HTTP 200'], $this->client->fetch('12345678'));
+    }
+
+    public function testCorruptCacheEntryIsFetchedAgain(): void
+    {
+        $this->cache->method('load')->willReturnMap([
+            ['mago_kvk_12345678', 'not json'],
+            ['mago_kvk_rate_limited', false],
+        ]);
+        $this->respond(200, '{"rechtsvormCode":"BV"}');
+
+        $this->assertSame(['rechtsvormCode' => 'BV'], $this->client->fetch('12345678'));
     }
 
     public function testServerErrorIsAnUncachedError(): void

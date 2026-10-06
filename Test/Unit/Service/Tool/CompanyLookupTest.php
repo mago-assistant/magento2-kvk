@@ -283,6 +283,14 @@ class CompanyLookupTest extends TestCase
         $this->assertSame(['error' => 'rate limited'], $this->tool->execute(['kvk_number' => '17085815']));
     }
 
+    public function testNonScalarInputIsTreatedAsMissing(): void
+    {
+        $this->client->expects($this->never())->method('fetch');
+
+        $this->assertSame('Magento_Sales::actions_view', $this->tool->getMagentoAcl(['kvk_number' => ['17085815']]));
+        $this->assertArrayHasKey('error', $this->tool->execute(['kvk_number' => ['17085815']]));
+    }
+
     public function testBareKvkNumberIsGrantedPerUser(): void
     {
         $this->assertSame(Acl::MAGO_PER_USER, $this->tool->getMagentoAcl(['kvk_number' => '17085815']));

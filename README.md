@@ -59,7 +59,7 @@ a KVK number your shop stores itself.
 **It returns no name or address.** Those come from vies. The register's fields are declared
 `PiiClass::PUBLIC`, but `kvk_number` and `order_number` are tokenised (`kvk`, `order`): on the order
 path the KVK number is customer data, and for a sole trader it identifies a person. That is exactly
-the `not_found` case, which echoes the number back.
+the `not_found` case. The register's own fault text repeats the number too, so the client replaces it with `[KVK number]` before it reaches `reason` or `error`.
 
 **One request per minute per IP address.** Every answer is cached (a miss for an hour), and a rate
 limit hit is remembered for a minute so the assistant does not retry into it. For more volume or for
